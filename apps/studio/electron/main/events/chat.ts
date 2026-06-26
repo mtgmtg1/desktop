@@ -1,11 +1,9 @@
 import type { ChatConversation, ProjectSuggestions } from '@onlook/models/chat';
 import { StreamRequestType } from '@onlook/models/chat';
 import { MainChannels } from '@onlook/models/constants';
-import type { SampleFeedbackType } from '@trainloop/sdk';
 import type { CoreMessage } from 'ai';
 import { ipcMain } from 'electron';
 import Chat from '../chat';
-import trainloop from '../chat/trainloop';
 import { PersistentStorage } from '../storage';
 
 export function listenForChatMessages() {
@@ -73,8 +71,8 @@ export function listenForChatMessages() {
         return Chat.generateChatSummary(messages);
     });
 
-    ipcMain.handle(MainChannels.SAVE_APPLY_RESULT, (e, args) => {
-        const { type, messages } = args as { messages: CoreMessage[]; type: SampleFeedbackType };
-        return trainloop.saveApplyResult(messages, type);
+    ipcMain.handle(MainChannels.SAVE_APPLY_RESULT, () => {
+        // Local-only app: remote training feedback disabled
+        return { success: true };
     });
 }

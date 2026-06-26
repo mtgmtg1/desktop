@@ -1,57 +1,46 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
+// [Flow: Read user AI provider settings -> Build OpenAI-compatible config -> Return language model]
+import { createOpenAI } from '@ai-sdk/openai';
 import type { StreamRequestType } from '@onlook/models/chat';
-import { BASE_PROXY_ROUTE, FUNCTIONS_ROUTE, ProxyRoutes } from '@onlook/models/constants';
-import { CLAUDE_MODELS, LLMProvider } from '@onlook/models/llm';
+import { LLMProvider } from '@onlook/models/llm';
 import { type LanguageModelV1 } from 'ai';
-import { getRefreshedAuthTokens } from '../auth';
+import { PersistentStorage } from '../storage';
 export interface OnlookPayload {
     requestType: StreamRequestType;
 }
 
 export async function initModel(
     provider: LLMProvider,
-    model: CLAUDE_MODELS,
-    payload: OnlookPayload,
+    model: string,
+    _payload: OnlookPayload,
 ): Promise<LanguageModelV1> {
     switch (provider) {
-        case LLMProvider.ANTHROPIC:
-            return await getAnthropicProvider(model, payload);
+        case LLMProvider.OPENAI:
+            return await getOpenAICompatibleProvider(model);
         default:
             throw new Error(`Unsupported provider: ${provider}`);
     }
 }
 
-async function getAnthropicProvider(
-    model: CLAUDE_MODELS,
-    payload: OnlookPayload,
-): Promise<LanguageModelV1> {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    const proxyUrl = `${import.meta.env.VITE_SUPABASE_API_URL}${FUNCTIONS_ROUTE}${BASE_PROXY_ROUTE}${ProxyRoutes.ANTHROPIC}`;
+async function getOpenAICompatibleProvider(model: string): Promise<LanguageModelV1> {
+    const settings = PersistentStorage.USER_SETTINGS.read();
+    const aiProvider = settings?.aiProvider;
+
+    if (!aiProvider?.endpoint) {
+        throw new Error('AI endpoint is not configured. Please set it in Preferences.');
+    }
 
     const config: {
         apiKey?: string;
         baseURL?: string;
         headers?: Record<string, string>;
-    } = {};
+    } = {
+        baseURL: aiProvider.endpoint,
+    };
 
-    if (apiKey) {
-        config.apiKey = apiKey;
-    } else {
-        const authTokens = await getRefreshedAuthTokens();
-        if (!authTokens) {
-            throw new Error('No auth tokens found');
-        }
-        config.apiKey = '';
-        config.baseURL = proxyUrl;
-        config.headers = {
-            Authorization: `Bearer ${authTokens.accessToken}`,
-            'X-Onlook-Request-Type': payload.requestType,
-            'anthropic-beta': 'output-128k-2025-02-19',
-        };
+    if (aiProvider.apiKey) {
+        config.apiKey = aiProvider.apiKey;
     }
 
-    const anthropic = createAnthropic(config);
-    return anthropic(model, {
-        cacheControl: true,
-    });
+    const openai = createOpenAI(config);
+    return openai(model);
 }

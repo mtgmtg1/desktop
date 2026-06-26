@@ -10,10 +10,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { observer } from 'mobx-react-lite';
 import { useEffect, useMemo } from 'react';
 import AdvancedTab from './Advance';
-import { DomainTab } from './Domain';
 import PreferencesTab from './Preferences';
 import ProjectTab from './Project';
-import { SiteTab } from './Site';
 import { PageTab } from './Site/Page';
 import { VersionsTab } from './Versions';
 import { capitalizeFirstLetter } from '/common/helpers';
@@ -53,16 +51,6 @@ export const SettingsModal = observer(() => {
     }, [pagesManager.tree]);
 
     const projectOnlyTabs: SettingTab[] = [
-        {
-            label: SettingsTabValue.SITE,
-            icon: <Icons.File className="mr-2 h-4 w-4" />,
-            component: <SiteTab />,
-        },
-        {
-            label: SettingsTabValue.DOMAIN,
-            icon: <Icons.Globe className="mr-2 h-4 w-4" />,
-            component: <DomainTab />,
-        },
         {
             label: SettingsTabValue.PROJECT,
             icon: <Icons.Gear className="mr-2 h-4 w-4" />,

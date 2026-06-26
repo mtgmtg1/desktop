@@ -5,7 +5,6 @@ import { ChatMessageRole, type AssistantChatMessage, type CodeBlock } from '@onl
 import type { CodeDiff } from '@onlook/models/code';
 import { MainChannels } from '@onlook/models/constants';
 import { toast } from '@onlook/ui/use-toast';
-import { SampleFeedbackType } from '@trainloop/sdk';
 import type { CoreMessage } from 'ai';
 import { makeAutoObservable } from 'mobx';
 import type { ChatManager } from '.';
@@ -81,10 +80,7 @@ export class ChatCodeManager {
         }
 
         this.chat.suggestions.shouldHide = false;
-        this.saveApplyResult(
-            message,
-            applySuccess ? SampleFeedbackType.GOOD : SampleFeedbackType.BAD,
-        );
+        this.saveApplyResult(message, applySuccess ? 'good' : 'bad');
 
         setTimeout(() => {
             this.editorEngine.webviews.reloadWebviews();
@@ -93,7 +89,7 @@ export class ChatCodeManager {
         sendAnalytics('apply code change');
     }
 
-    saveApplyResult(message: CoreMessage, type: SampleFeedbackType) {
+    saveApplyResult(message: CoreMessage, type: string) {
         invokeMainChannel(MainChannels.SAVE_APPLY_RESULT, { type, messages: [message] });
     }
 

@@ -7,7 +7,6 @@ import {
     type AssistantChatMessage,
     type CompletedStreamResponse,
     type ErrorStreamResponse,
-    type RateLimitedStreamResponse,
 } from '@onlook/models/chat';
 import { MainChannels } from '@onlook/models/constants';
 import type { ParsedError } from '@onlook/utility';
@@ -169,10 +168,7 @@ export class ChatManager {
             return;
         }
 
-        if (res.type === 'rate-limited') {
-            this.handleRateLimited(res);
-            return;
-        } else if (res.type === 'error') {
+        if (res.type === 'error') {
             this.handleError(res);
             return;
         }
@@ -182,15 +178,17 @@ export class ChatManager {
             return;
         }
 
-        if (res.usage) {
-            this.conversation.current.updateTokenUsage(res.usage);
-        }
+        if (res.type === 'full') {
+            if (res.usage) {
+                this.conversation.current.updateTokenUsage(res.usage);
+            }
 
-        if (this.conversation.current.needsSummary()) {
-            await this.conversation.generateConversationSummary();
-        }
+            if (this.conversation.current.needsSummary()) {
+                await this.conversation.generateConversationSummary();
+            }
 
-        this.handleNewCoreMessages(res.payload);
+            this.handleNewCoreMessages(res.payload);
+        }
 
         if (
             requestType === StreamRequestType.CHAT &&
@@ -235,14 +233,6 @@ export class ChatManager {
                 this.code.applyCode(assistantMessage.id);
             }, 100);
         }
-    }
-
-    handleRateLimited(res: RateLimitedStreamResponse) {
-        this.stream.errorMessage = res.rateLimitResult?.reason;
-        this.stream.rateLimited = res.rateLimitResult ?? null;
-        sendAnalytics('rate limited', {
-            rateLimitResult: res.rateLimitResult,
-        });
     }
 
     handleError(res: ErrorStreamResponse) {

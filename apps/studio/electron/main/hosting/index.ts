@@ -26,7 +26,6 @@ import {
 } from 'freestyle-sandboxes';
 import { mainWindow } from '..';
 import analytics from '../analytics';
-import { getRefreshedAuthTokens } from '../auth';
 import {
     postprocessNextBuild,
     preprocessNextBuild,
@@ -211,49 +210,11 @@ class HostingManager {
     }
 
     async sendHostingPostRequest(
-        files: FileRecord,
-        urls: string[],
-        envVars?: Record<string, string>,
+        _files: FileRecord,
+        _urls: string[],
+        _envVars?: Record<string, string>,
     ): Promise<string> {
-        const authTokens = await getRefreshedAuthTokens();
-        const config: FreestyleDeployWebConfiguration = {
-            domains: urls,
-            entrypoint: 'server.js',
-            envVars,
-        };
-
-        const res: Response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_API_URL}${FUNCTIONS_ROUTE}${BASE_API_ROUTE}${ApiRoutes.HOSTING_V2}${HostingRoutes.DEPLOY_WEB}`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${authTokens.accessToken}`,
-                },
-                body: JSON.stringify({
-                    files,
-                    config,
-                }),
-            },
-        );
-
-        const freestyleResponse = (await res.json()) as {
-            success: boolean;
-            message?: string;
-            error?: {
-                message: string;
-            };
-            data?: FreestyleDeployWebSuccessResponse;
-        };
-
-        if (!res.ok || !freestyleResponse.success) {
-            console.log(JSON.stringify(freestyleResponse));
-            throw new Error(
-                `${freestyleResponse.error?.message || freestyleResponse.message || 'Unknown error'}`,
-            );
-        }
-
-        return freestyleResponse.data?.deploymentId ?? '';
+        throw new Error('Hosting disabled in local mode');
     }
 }
 

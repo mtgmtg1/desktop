@@ -1,6 +1,6 @@
 import { PromptProvider } from '@onlook/ai/src/prompt/provider';
 import { chatToolSet } from '@onlook/ai/src/tools';
-import { CLAUDE_MODELS, LLMProvider } from '@onlook/models';
+import { LLMProvider } from '@onlook/models';
 import {
     ChatSuggestionSchema,
     ChatSummarySchema,
@@ -8,7 +8,6 @@ import {
     type ChatSuggestion,
     type CompletedStreamResponse,
     type PartialStreamResponse,
-    type UsageCheckResult,
 } from '@onlook/models/chat';
 import { MainChannels } from '@onlook/models/constants';
 import {
@@ -74,13 +73,12 @@ class LlmManager {
                 const systemMessage = {
                     role: 'system',
                     content: this.promptProvider.getSystemPrompt(process.platform),
-                    experimental_providerMetadata: {
-                        anthropic: { cacheControl: { type: 'ephemeral' } },
-                    },
                 } as CoreSystemMessage;
                 messages = [systemMessage, ...messages];
             }
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.SONNET_4, {
+            const settings = PersistentStorage.USER_SETTINGS.read();
+            const modelId = settings?.aiProvider?.modelId || 'default';
+            const model = await initModel(LLMProvider.OPENAI, modelId, {
                 requestType,
             });
 
@@ -144,18 +142,6 @@ class LlmManager {
             };
         } catch (error: any) {
             try {
-                if (error?.error?.statusCode) {
-                    if (error?.error?.statusCode === 403) {
-                        const rateLimitError = JSON.parse(
-                            error.error.responseBody,
-                        ) as UsageCheckResult;
-                        return {
-                            type: 'rate-limited',
-                            rateLimitResult: rateLimitError,
-                        };
-                    }
-                }
-
                 if (RetryError.isInstance(error.error)) {
                     const parsed = JSON.parse(error.error.lastError.responseBody);
                     return { message: parsed.error.message, type: 'error' };
@@ -198,7 +184,9 @@ class LlmManager {
 
     public async generateSuggestions(messages: CoreMessage[]): Promise<ChatSuggestion[]> {
         try {
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.HAIKU, {
+            const settings = PersistentStorage.USER_SETTINGS.read();
+            const modelId = settings?.aiProvider?.modelId || 'default';
+            const model = await initModel(LLMProvider.OPENAI, modelId, {
                 requestType: StreamRequestType.SUGGESTIONS,
             });
 
@@ -217,16 +205,15 @@ class LlmManager {
 
     public async generateChatSummary(messages: CoreMessage[]): Promise<string | null> {
         try {
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.HAIKU, {
+            const settings = PersistentStorage.USER_SETTINGS.read();
+            const modelId = settings?.aiProvider?.modelId || 'default';
+            const model = await initModel(LLMProvider.OPENAI, modelId, {
                 requestType: StreamRequestType.SUMMARY,
             });
 
             const systemMessage: CoreSystemMessage = {
                 role: 'system',
                 content: this.promptProvider.getSummaryPrompt(),
-                experimental_providerMetadata: {
-                    anthropic: { cacheControl: { type: 'ephemeral' } },
-                },
             };
 
             // Transform messages to emphasize they are historical content

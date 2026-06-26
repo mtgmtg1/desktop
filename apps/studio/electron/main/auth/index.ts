@@ -1,250 +1,193 @@
-import { APP_SCHEMA, MainChannels } from '@onlook/models/constants';
-import type { AuthTokens, UserMetadata } from '@onlook/models/settings';
-import supabase from '@onlook/supabase/clients';
-import type {
-    AuthResponse,
-    Session,
-    Subscription,
-    SupabaseClient,
-    User,
-} from '@supabase/supabase-js';
-import { shell } from 'electron';
+// [Flow: Load local accounts -> Ensure admin account exists -> Authenticate by email/password -> Manage accounts -> Emit sign in/out events]
+import { MainChannels } from '@onlook/models/constants';
+import type { LocalAccount, LocalAccounts, UserMetadata } from '@onlook/models/settings';
+import { createHash, randomUUID } from 'node:crypto';
 import { mainWindow } from '..';
-import analytics, { sendAnalytics } from '../analytics';
 import { PersistentStorage } from '../storage';
 
-let isAutoRefreshEnabled = false;
-let sessionSubscription: Subscription | undefined;
+const ADMIN_EMAIL = 'mtgmtg@naver.com';
+const ADMIN_PASSWORD = 'PAkd21109!';
 
-export async function startAuthAutoRefresh() {
-    if (!supabase || isAutoRefreshEnabled) {
-        return;
-    }
-
-    try {
-        await supabase.auth.startAutoRefresh();
-        isAutoRefreshEnabled = true;
-        console.log('Started auto-refresh for auth session');
-    } catch (error) {
-        console.error('Failed to start auto-refresh:', error);
-    }
+function hashPassword(password: string): string {
+    return createHash('sha256').update(password).digest('hex');
 }
 
-export async function stopAuthAutoRefresh() {
-    if (!supabase || !isAutoRefreshEnabled) {
-        return;
-    }
-
-    try {
-        await supabase.auth.stopAutoRefresh();
-        isAutoRefreshEnabled = false;
-        console.log('Stopped auto-refresh for auth session');
-    } catch (error) {
-        console.error('Failed to stop auto-refresh:', error);
-    }
+function verifyPassword(password: string, hash: string): boolean {
+    return hashPassword(password) === hash;
 }
 
-export function setupAuthAutoRefresh() {
-    if (!mainWindow) {
-        return;
-    }
-
-    cleanupAuthAutoRefresh();
-    mainWindow.on('focus', startAuthAutoRefresh);
-    mainWindow.on('blur', stopAuthAutoRefresh);
-
-    if (mainWindow.isFocused()) {
-        startAuthAutoRefresh();
-    }
+function getAccounts(): LocalAccount[] {
+    const data = PersistentStorage.LOCAL_ACCOUNTS.read();
+    return data?.accounts || [];
 }
 
-export function cleanupAuthAutoRefresh() {
-    if (!mainWindow) {
-        return;
-    }
-
-    mainWindow.removeListener('focus', startAuthAutoRefresh);
-    mainWindow.removeListener('blur', stopAuthAutoRefresh);
-    stopAuthAutoRefresh();
+function saveAccounts(accounts: LocalAccount[]) {
+    PersistentStorage.LOCAL_ACCOUNTS.replace({ accounts });
 }
 
-export async function signIn(provider: 'github' | 'google') {
-    if (!supabase) {
-        throw new Error('No backend connected');
-    }
-
-    supabase.auth.signOut();
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-            skipBrowserRedirect: true,
-            redirectTo: APP_SCHEMA + '://auth',
-        },
-    });
-
-    if (error) {
-        console.error('Authentication error:', error);
+function ensureAdminAccount() {
+    const accounts = getAccounts();
+    if (accounts.find((a) => a.email === ADMIN_EMAIL)) {
         return;
     }
 
-    shell.openExternal(data.url);
-    sendAnalytics('sign in', { provider });
+    const adminAccount: LocalAccount = {
+        id: randomUUID(),
+        email: ADMIN_EMAIL,
+        passwordHash: hashPassword(ADMIN_PASSWORD),
+        isAdmin: true,
+        createdAt: new Date().toISOString(),
+    };
+
+    saveAccounts([adminAccount, ...accounts]);
 }
 
-export async function handleAuthCallback(url: string) {
-    if (!url.startsWith(APP_SCHEMA + '://auth')) {
-        return;
-    }
-
-    const authTokens = getTokenFromCallbackUrl(url);
-    PersistentStorage.AUTH_TOKENS.replace(authTokens);
-
-    if (!supabase) {
-        throw new Error('No backend connected');
-    }
-
-    const {
-        data: { user },
-        error,
-    } = await supabase.auth.getUser(authTokens.accessToken);
-
-    if (error) {
-        throw error;
-    }
-
-    if (!user) {
-        throw new Error('No user found');
-    }
-
-    const userMetadata = getUserMetadata(user);
-    PersistentStorage.USER_METADATA.replace(userMetadata);
-
-    analytics.identify(userMetadata);
-    emitSignInEvent();
-    listenForSessionChanges(supabase);
+function toUserMetadata(account: LocalAccount): UserMetadata {
+    return {
+        id: account.id,
+        email: account.email,
+        name: account.email.split('@')[0],
+        avatarUrl: undefined,
+        plan: 'pro',
+        isAdmin: account.isAdmin,
+    };
 }
 
 function emitSignInEvent() {
     mainWindow?.webContents.send(MainChannels.USER_SIGNED_IN);
 }
 
-function getTokenFromCallbackUrl(url: string): AuthTokens {
-    const fragmentParams = new URLSearchParams(url.split('#')[1]);
-
-    const accessToken = fragmentParams.get('access_token');
-    const refreshToken = fragmentParams.get('refresh_token');
-    const expiresAt = fragmentParams.get('expires_at');
-    const expiresIn = fragmentParams.get('expires_in');
-    const providerToken = fragmentParams.get('provider_token');
-    const tokenType = fragmentParams.get('token_type');
-
-    if (!accessToken || !refreshToken || !expiresAt || !expiresIn || !providerToken || !tokenType) {
-        throw new Error('Invalid token');
-    }
-
-    return {
-        accessToken,
-        refreshToken,
-        expiresAt,
-        expiresIn,
-        providerToken,
-        tokenType,
-    };
-}
-
-function getUserMetadata(user: User): UserMetadata {
-    const userMetadata: UserMetadata = {
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata.full_name,
-        avatarUrl: user.user_metadata.avatar_url,
-    };
-    return userMetadata;
-}
-
-export async function getRefreshedAuthTokens(): Promise<AuthTokens> {
-    if (!supabase) {
-        throw new Error('No backend connected');
-    }
-
-    const {
-        data: { session: currentSession },
-    } = await supabase.auth.getSession();
-    if (currentSession) {
-        const authTokens = getAuthTokensFromSession(currentSession);
-        PersistentStorage.AUTH_TOKENS.replace(authTokens);
-        return authTokens;
-    }
-
-    const authTokens = PersistentStorage.AUTH_TOKENS.read();
-    if (!authTokens) {
-        throw new Error('No auth tokens found');
-    }
-
-    const {
-        data: { session: refreshedSession },
-        error,
-    }: AuthResponse = await supabase.auth.setSession({
-        access_token: authTokens.accessToken,
-        refresh_token: authTokens.refreshToken,
-    });
-
-    if (error || !refreshedSession) {
-        throw new Error('Failed to refresh session, you may need to sign in again. ' + error);
-    }
-
-    const refreshedAuthTokens = getAuthTokensFromSession(refreshedSession);
-
-    // Save the refreshed auth tokens to the persistent storage
-    PersistentStorage.AUTH_TOKENS.replace(refreshedAuthTokens);
-    return refreshedAuthTokens;
-}
-
-function getAuthTokensFromSession(session: Session): AuthTokens {
-    const refreshedAuthTokens: AuthTokens = {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
-        expiresAt: session.expires_at?.toString() ?? '',
-        expiresIn: session.expires_in.toString(),
-        providerToken: session.provider_token ?? '',
-        tokenType: session.token_type ?? '',
-    };
-    return refreshedAuthTokens;
-}
-
-export async function signOut() {
-    sendAnalytics('sign out');
-    analytics.signOut();
-
-    await supabase?.auth.signOut();
-    PersistentStorage.USER_METADATA.clear();
-    PersistentStorage.AUTH_TOKENS.clear();
+function emitSignOutEvent() {
     mainWindow?.webContents.send(MainChannels.USER_SIGNED_OUT);
-    unsubscribeFromSessionChanges();
 }
 
-function listenForSessionChanges(supabase: SupabaseClient) {
-    if (sessionSubscription) {
-        console.log('Already listening for session changes');
-        return;
-    }
-
-    const {
-        data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session) {
-            const authTokens = getAuthTokensFromSession(session);
-            PersistentStorage.AUTH_TOKENS.replace(authTokens);
-        }
-    });
-
-    sessionSubscription = subscription;
+export function initLocalAuth() {
+    ensureAdminAccount();
 }
 
-function unsubscribeFromSessionChanges() {
-    if (sessionSubscription) {
-        sessionSubscription.unsubscribe();
-        sessionSubscription = undefined;
+export function signIn(email: string, password: string): { success: boolean; error?: string } {
+    const accounts = getAccounts();
+    const account = accounts.find((a) => a.email === email);
+
+    if (!account) {
+        return { success: false, error: 'Account not found' };
     }
+
+    if (!verifyPassword(password, account.passwordHash)) {
+        return { success: false, error: 'Invalid password' };
+    }
+
+    const userMetadata = toUserMetadata(account);
+    PersistentStorage.USER_METADATA.replace(userMetadata);
+    PersistentStorage.LOCAL_SESSION.replace({ email: account.email });
+    emitSignInEvent();
+    return { success: true };
+}
+
+export function signOut() {
+    PersistentStorage.USER_METADATA.clear();
+    PersistentStorage.LOCAL_SESSION.clear();
+    emitSignOutEvent();
+}
+
+export function createAccount(
+    email: string,
+    password: string,
+    isAdmin: boolean,
+): { success: boolean; error?: string } {
+    const accounts = getAccounts();
+
+    if (accounts.find((a) => a.email === email)) {
+        return { success: false, error: 'Account already exists' };
+    }
+
+    if (password.length < 8) {
+        return { success: false, error: 'Password must be at least 8 characters' };
+    }
+
+    const newAccount: LocalAccount = {
+        id: randomUUID(),
+        email,
+        passwordHash: hashPassword(password),
+        isAdmin,
+        createdAt: new Date().toISOString(),
+    };
+
+    saveAccounts([...accounts, newAccount]);
+    return { success: true };
+}
+
+export function changePassword(
+    email: string,
+    newPassword: string,
+): { success: boolean; error?: string } {
+    const accounts = getAccounts();
+    const account = accounts.find((a) => a.email === email);
+
+    if (!account) {
+        return { success: false, error: 'Account not found' };
+    }
+
+    if (newPassword.length < 8) {
+        return { success: false, error: 'Password must be at least 8 characters' };
+    }
+
+    account.passwordHash = hashPassword(newPassword);
+    saveAccounts(accounts);
+    return { success: true };
+}
+
+export function listAccounts(): LocalAccount[] {
+    return getAccounts();
+}
+
+export function deleteAccount(email: string): { success: boolean; error?: string } {
+    if (email === ADMIN_EMAIL) {
+        return { success: false, error: 'Cannot delete the admin account' };
+    }
+
+    const accounts = getAccounts();
+    const filtered = accounts.filter((a) => a.email !== email);
+
+    if (filtered.length === accounts.length) {
+        return { success: false, error: 'Account not found' };
+    }
+
+    saveAccounts(filtered);
+    return { success: true };
+}
+
+export function getUserMetadata(): UserMetadata | null {
+    const session = PersistentStorage.LOCAL_SESSION.read();
+    if (!session?.email) {
+        return null;
+    }
+
+    const account = getAccounts().find((a) => a.email === session.email);
+    if (!account) {
+        return null;
+    }
+
+    return toUserMetadata(account);
+}
+
+export function isUserSignedIn(): boolean {
+    return getUserMetadata() !== null;
+}
+
+export function restoreSession(): { success: boolean; error?: string } {
+    const session = PersistentStorage.LOCAL_SESSION.read();
+    if (!session?.email) {
+        return { success: false, error: 'No session found' };
+    }
+
+    const account = getAccounts().find((a) => a.email === session.email);
+    if (!account) {
+        return { success: false, error: 'Session account not found' };
+    }
+
+    const userMetadata = toUserMetadata(account);
+    PersistentStorage.USER_METADATA.replace(userMetadata);
+    emitSignInEvent();
+    return { success: true };
 }

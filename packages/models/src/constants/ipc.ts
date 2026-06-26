@@ -74,6 +74,14 @@ export enum MainChannels {
     UPDATE_USER_METADATA = 'update-user-metadata',
     IS_USER_SIGNED_IN = 'is-user-signed-in',
 
+    // Local Auth
+    LOCAL_SIGN_IN = 'local-sign-in',
+    LOCAL_SIGN_OUT = 'local-sign-out',
+    LOCAL_CREATE_ACCOUNT = 'local-create-account',
+    LOCAL_CHANGE_PASSWORD = 'local-change-password',
+    LOCAL_LIST_ACCOUNTS = 'local-list-accounts',
+    LOCAL_DELETE_ACCOUNT = 'local-delete-account',
+
     // Storage
     GET_USER_SETTINGS = 'get-user-settings',
     GET_APP_STATE = 'get-app-state',

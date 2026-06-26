@@ -1,13 +1,14 @@
+// [Flow: Check local session -> Listen for auth events -> Sign in/out with email/password]
 import { MainChannels } from '@onlook/models/constants';
 import type { UserMetadata } from '@onlook/models/settings';
-import supabase from '@onlook/supabase/clients';
 import { makeAutoObservable } from 'mobx';
 import { invokeMainChannel } from '../utils';
 
 export class AuthManager {
     authenticated = false;
     userMetadata: UserMetadata | null = null;
-    isAuthEnabled = !!supabase && !!supabase.auth;
+    isAuthEnabled = true;
+    errorMessage: string | null = null;
 
     constructor() {
         makeAutoObservable(this);
@@ -28,22 +29,37 @@ export class AuthManager {
     }
 
     listenForAuthEvents() {
-        window.api.on(MainChannels.USER_SIGNED_IN, async (e, args) => {
+        window.api.on(MainChannels.USER_SIGNED_IN, async () => {
             this.authenticated = true;
             this.fetchUserMetadata();
         });
 
-        window.api.on(MainChannels.USER_SIGNED_OUT, async (e, args) => {
+        window.api.on(MainChannels.USER_SIGNED_OUT, async () => {
             this.authenticated = false;
             this.userMetadata = null;
         });
     }
 
-    async signIn(provider: 'github' | 'google') {
-        await invokeMainChannel(MainChannels.SIGN_IN, { provider });
+    async signIn(email: string, password: string): Promise<boolean> {
+        this.errorMessage = null;
+        const result = (await invokeMainChannel(MainChannels.LOCAL_SIGN_IN, {
+            email,
+            password,
+        })) as { success: boolean; error?: string };
+
+        if (!result.success) {
+            this.errorMessage = result.error || 'Login failed';
+            return false;
+        }
+
+        this.authenticated = true;
+        await this.fetchUserMetadata();
+        return true;
     }
 
     async signOut() {
-        await invokeMainChannel(MainChannels.SIGN_OUT);
+        await invokeMainChannel(MainChannels.LOCAL_SIGN_OUT);
+        this.authenticated = false;
+        this.userMetadata = null;
     }
 }

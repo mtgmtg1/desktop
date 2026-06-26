@@ -1,4 +1,4 @@
-import type { PartialStreamResponse, UsageCheckResult } from '@onlook/models/chat';
+import type { PartialStreamResponse } from '@onlook/models/chat';
 import { MainChannels } from '@onlook/models/constants';
 import type { TextPart, TextStreamPart, ToolCallPart, ToolResultPart, ToolSet } from 'ai';
 import { makeAutoObservable } from 'mobx';
@@ -7,7 +7,6 @@ export class StreamResolver {
     content: (TextPart | ToolCallPart | ToolResultPart)[] = [];
     requestId: string | null = null;
     errorMessage: string | null = null;
-    rateLimited: UsageCheckResult | null = null;
     id: string = 'stream';
 
     constructor() {
@@ -66,12 +65,7 @@ export class StreamResolver {
     clearBeforeSend() {
         this.content = [];
         this.requestId = null;
-        this.rateLimited = null;
         this.errorMessage = null;
-    }
-
-    clearRateLimited() {
-        this.rateLimited = null;
     }
 
     clearErrorMessage() {
@@ -85,7 +79,6 @@ export class StreamResolver {
     dispose() {
         this.content = [];
         this.requestId = null;
-        this.rateLimited = null;
         this.errorMessage = null;
     }
 }

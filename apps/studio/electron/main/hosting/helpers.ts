@@ -1,4 +1,3 @@
-import { addNextBuildConfig } from '@onlook/foundation';
 import { CUSTOM_OUTPUT_DIR } from '@onlook/models/constants';
 import type { FreestyleFile } from 'freestyle-sandboxes';
 import {
@@ -53,7 +52,7 @@ export async function preprocessNextBuild(projectDir: string): Promise<{
     success: boolean;
     error?: string;
 }> {
-    const res = await addNextBuildConfig(projectDir);
+    const res = true;
     if (!res) {
         return {
             success: false,

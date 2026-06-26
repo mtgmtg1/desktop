@@ -1,38 +1,28 @@
-import { useAuthManager, useUserManager } from '@/components/Context';
+// [Flow: Render email/password form -> Validate input -> Call local sign in -> Show error or proceed]
+import { useAuthManager } from '@/components/Context';
 import { Dunes } from '@/components/ui/dunes';
-import { invokeMainChannel } from '@/lib/utils';
-import { MainChannels } from '@onlook/models/constants';
 import { Button } from '@onlook/ui/button';
 import { Icons } from '@onlook/ui/icons';
+import { Input } from '@onlook/ui/input';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-enum SignInMethod {
-    GITHUB = 'github',
-    GOOGLE = 'google',
-}
 
 export const SignIn = observer(() => {
     const { t } = useTranslation();
     const authManager = useAuthManager();
-    const userManager = useUserManager();
-    const [lastSignInMethod, setLastSignInMethod] = useState<SignInMethod | null>(null);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        if (userManager.settings && userManager.settings.settings?.signInMethod) {
-            setLastSignInMethod(userManager.settings.settings.signInMethod as SignInMethod);
+    const handleLogin = async () => {
+        if (!email || !password) {
+            return;
         }
-    }, [authManager.authenticated]);
-
-    const handleLogin = (method: SignInMethod) => {
-        authManager.signIn(method);
-        userManager.settings.update({ signInMethod: method });
+        setIsLoading(true);
+        await authManager.signIn(email, password);
+        setIsLoading(false);
     };
-
-    function openExternalLink(url: string) {
-        invokeMainChannel(MainChannels.OPEN_EXTERNAL_WINDOW, url);
-    }
 
     return (
         <div className="flex h-[calc(100vh-2.5rem)]">
@@ -45,61 +35,35 @@ export const SignIn = observer(() => {
                         <p>{t('welcome.alpha')}</p>
                     </div>
                     <div className="space-y-4">
-                        <h1 className="text-title1 leading-tight">
-                            {lastSignInMethod ? t('welcome.titleReturn') : t('welcome.title')}
-                        </h1>
-                        <p className="text-foreground-onlook text-regular">
-                            {t('welcome.description')}
-                        </p>
+                        <h1 className="text-title1 leading-tight">Sign in to Onlook</h1>
+                        <p className="text-foreground-onlook text-regular">Local account login</p>
                     </div>
-                    <div className="space-x-2 flex flex-row">
-                        <div className="flex flex-col items-center w-full">
-                            <Button
-                                variant="outline"
-                                className={`w-full text-active text-small ${lastSignInMethod === SignInMethod.GITHUB ? 'bg-teal-100 dark:bg-teal-950 border-teal-300 dark:border-teal-700 text-teal-900 dark:text-teal-100 text-small hover:bg-teal-200/50 dark:hover:bg-teal-800 hover:border-teal-500/70 dark:hover:border-teal-500' : 'bg-background-onlook'}`}
-                                onClick={() => handleLogin(SignInMethod.GITHUB)}
-                            >
-                                <Icons.GitHubLogo className="w-4 h-4 mr-2" />{' '}
-                                {t('welcome.login.github')}
-                            </Button>
-                            {lastSignInMethod === SignInMethod.GITHUB && (
-                                <p className="text-teal-500 text-small mt-1">
-                                    {t('welcome.login.lastUsed')}
-                                </p>
-                            )}
-                        </div>
-                        <div className="flex flex-col items-center w-full">
-                            <Button
-                                variant="outline"
-                                className={`w-full text-active text-small ${lastSignInMethod === SignInMethod.GOOGLE ? 'bg-teal-100 dark:bg-teal-950 border-teal-300 dark:border-teal-700 text-teal-900 dark:text-teal-100 text-small hover:bg-teal-200/50 dark:hover:bg-teal-800 hover:border-teal-500/70 dark:hover:border-teal-500' : 'bg-background-onlook'}`}
-                                onClick={() => handleLogin(SignInMethod.GOOGLE)}
-                            >
-                                <Icons.GoogleLogo viewBox="0 0 24 24" className="w-4 h-4 mr-2" />
-                                {t('welcome.login.google')}
-                            </Button>
-                            {lastSignInMethod === SignInMethod.GOOGLE && (
-                                <p className="text-teal-500 text-small mt-1">
-                                    {t('welcome.login.lastUsed')}
-                                </p>
-                            )}
-                        </div>
+                    <div className="space-y-4">
+                        <Input
+                            type="email"
+                            placeholder="Email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                        />
+                        <Input
+                            type="password"
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                        />
+                        {authManager.errorMessage && (
+                            <p className="text-small text-red-500">{authManager.errorMessage}</p>
+                        )}
+                        <Button
+                            className="w-full text-active text-small"
+                            onClick={handleLogin}
+                            disabled={isLoading || !email || !password}
+                        >
+                            {isLoading ? 'Signing in...' : 'Sign in'}
+                        </Button>
                     </div>
-                    <p className="text-small text-foreground-onlook">
-                        {t('welcome.terms.agreement')}{' '}
-                        <button
-                            onClick={() => openExternalLink('https://onlook.com/privacy-policy')}
-                            className="text-gray-300 hover:text-gray-50 underline transition-colors duration-200"
-                        >
-                            {t('welcome.terms.privacy')}
-                        </button>{' '}
-                        {t('welcome.terms.and')}{' '}
-                        <button
-                            onClick={() => openExternalLink('https://onlook.com/terms-of-service')}
-                            className="text-gray-300 hover:text-gray-50 underline transition-colors duration-200"
-                        >
-                            {t('welcome.terms.tos')}
-                        </button>
-                    </p>
                 </div>
                 <div className="flex flex-row space-x-1 text-small text-gray-600">
                     <p>{t('welcome.version', { version: window.env.APP_VERSION })}</p>

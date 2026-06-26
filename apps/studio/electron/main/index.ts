@@ -1,12 +1,11 @@
-import { APP_NAME, APP_SCHEMA, MainChannels } from '@onlook/models/constants';
+import { APP_NAME, MainChannels } from '@onlook/models/constants';
 import { BrowserWindow, app, shell } from 'electron';
 import fixPath from 'fix-path';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sendAnalytics } from './analytics';
-import { handleAuthCallback, setupAuthAutoRefresh } from './auth';
+import { initLocalAuth } from './auth';
 import { listenForIpcMessages } from './events';
 import runManager from './run';
 import { updater } from './update';
@@ -47,17 +46,6 @@ const configurePlatformSpecifics = () => {
     }
 };
 
-// Protocol setup
-const setupProtocol = () => {
-    if (process.defaultApp && process.argv.length >= 2) {
-        app.setAsDefaultProtocolClient(APP_SCHEMA, process.execPath, [
-            path.resolve(process.argv[1]),
-        ]);
-    } else {
-        app.setAsDefaultProtocolClient(APP_SCHEMA);
-    }
-};
-
 const createWindow = () => {
     mainWindow = new BrowserWindow({
         title: APP_NAME,
@@ -87,8 +75,6 @@ const initMainWindow = () => {
         }
         return { action: 'deny' };
     });
-
-    setupAuthAutoRefresh();
 };
 
 const setupAppEventListeners = () => {
@@ -98,7 +84,6 @@ const setupAppEventListeners = () => {
 
     app.on('ready', () => {
         updater.listen();
-        sendAnalytics('start app');
     });
 
     app.on('window-all-closed', async () => {
@@ -108,16 +93,12 @@ const setupAppEventListeners = () => {
         }
     });
 
-    app.on('second-instance', (_, commandLine) => {
+    app.on('second-instance', () => {
         if (mainWindow) {
             if (mainWindow.isMinimized()) {
                 mainWindow.restore();
             }
             mainWindow.focus();
-        }
-        const url = commandLine.find((arg) => arg.startsWith(`${APP_SCHEMA}://`));
-        if (url && process.platform !== 'darwin') {
-            handleAuthCallback(url);
         }
     });
 
@@ -125,11 +106,6 @@ const setupAppEventListeners = () => {
         BrowserWindow.getAllWindows().length
             ? BrowserWindow.getAllWindows()[0].focus()
             : initMainWindow();
-    });
-
-    app.on('open-url', (event, url) => {
-        event.preventDefault();
-        handleAuthCallback(url);
     });
 
     async function cleanUp() {
@@ -168,7 +144,7 @@ const setupAppEventListeners = () => {
     });
 
     app.on('quit', () => {
-        sendAnalytics('quit app');
+        // App quit
     });
 };
 
@@ -181,7 +157,7 @@ const main = async () => {
 
     setupEnvironment();
     configurePlatformSpecifics();
-    setupProtocol();
+    initLocalAuth();
     setupAppEventListeners();
     listenForIpcMessages();
 };

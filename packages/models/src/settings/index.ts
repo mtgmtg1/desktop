@@ -1,12 +1,19 @@
 import { IdeType } from '../ide';
 import { type Project } from '../projects';
 
+export interface AIProviderSettings {
+    endpoint: string;
+    modelId: string;
+    apiKey: string;
+}
+
 export interface UserSettings {
     id?: string;
     enableAnalytics?: boolean;
     signInMethod?: string;
     editor?: EditorSettings;
     chat?: ChatSettings;
+    aiProvider?: AIProviderSettings;
 }
 
 export interface EditorSettings {
@@ -34,6 +41,19 @@ export interface UserMetadata {
     email?: string;
     avatarUrl?: string;
     plan?: string;
+    isAdmin?: boolean;
+}
+
+export interface LocalAccount {
+    id: string;
+    email: string;
+    passwordHash: string;
+    isAdmin: boolean;
+    createdAt: string;
+}
+
+export interface LocalAccounts {
+    accounts: LocalAccount[];
 }
 
 export interface AuthTokens {

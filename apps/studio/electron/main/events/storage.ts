@@ -1,8 +1,7 @@
 import { MainChannels } from '@onlook/models/constants';
 import type { AppState, UserMetadata, UserSettings } from '@onlook/models/settings';
 import { ipcMain } from 'electron';
-import mixpanel from '../analytics';
-import { getRefreshedAuthTokens } from '../auth';
+import { getUserMetadata, isUserSignedIn } from '../auth';
 import { PersistentStorage } from '../storage';
 
 export function listenForStorageMessages() {
@@ -18,14 +17,13 @@ export function listenForStorageMessages() {
     );
 
     ipcMain.handle(MainChannels.GET_USER_METADATA, (e: Electron.IpcMainInvokeEvent) => {
-        return PersistentStorage.USER_METADATA.read();
+        return getUserMetadata();
     });
 
     ipcMain.handle(
         MainChannels.UPDATE_USER_METADATA,
         (e: Electron.IpcMainInvokeEvent, args: Partial<UserMetadata>) => {
             PersistentStorage.USER_METADATA.update(args);
-            mixpanel.updateUserMetadata(args);
         },
     );
 
@@ -34,7 +32,7 @@ export function listenForStorageMessages() {
     });
 
     ipcMain.handle(MainChannels.IS_USER_SIGNED_IN, (e: Electron.IpcMainInvokeEvent) => {
-        return getRefreshedAuthTokens();
+        return isUserSignedIn();
     });
 
     ipcMain.handle(

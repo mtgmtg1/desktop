@@ -1,8 +1,9 @@
-import { useUserManager } from '@/components/Context';
+import { useAuthManager, useUserManager } from '@/components/Context';
 import { useTheme } from '@/components/ThemeProvider';
 import { invokeMainChannel } from '@/lib/utils';
 import { Language, LANGUAGE_DISPLAY_NAMES, MainChannels, Theme } from '@onlook/models/constants';
 import { DEFAULT_IDE } from '@onlook/models/ide';
+import type { AIProviderSettings, LocalAccount } from '@onlook/models/settings';
 import { Button } from '@onlook/ui/button';
 import {
     DropdownMenu,
@@ -11,12 +12,15 @@ import {
     DropdownMenuTrigger,
 } from '@onlook/ui/dropdown-menu';
 import { Icons } from '@onlook/ui/icons';
+import { Input } from '@onlook/ui/input';
 import { observer } from 'mobx-react-lite';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IDE } from '/common/ide';
 
 const PreferencesTab = observer(() => {
     const userManager = useUserManager();
+    const authManager = useAuthManager();
     const { theme, setTheme } = useTheme();
     const { i18n } = useTranslation();
 
@@ -24,6 +28,42 @@ const PreferencesTab = observer(() => {
     const isAnalyticsEnabled = userManager.settings.settings?.enableAnalytics || false;
     const shouldWarnDelete = userManager.settings.settings?.editor?.shouldWarnDelete ?? true;
     const IDEIcon = Icons[ide.icon];
+
+    const aiProvider = userManager.settings.settings?.aiProvider || {
+        endpoint: '',
+        modelId: '',
+        apiKey: '',
+    };
+    const [aiEndpoint, setAiEndpoint] = useState(aiProvider.endpoint);
+    const [aiModelId, setAiModelId] = useState(aiProvider.modelId);
+    const [aiApiKey, setAiApiKey] = useState(aiProvider.apiKey);
+
+    const [accounts, setAccounts] = useState<LocalAccount[]>([]);
+    const [newEmail, setNewEmail] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [newIsAdmin, setNewIsAdmin] = useState(false);
+    const [changePasswordEmail, setChangePasswordEmail] = useState('');
+    const [changePasswordValue, setChangePasswordValue] = useState('');
+    const [accountMessage, setAccountMessage] = useState<string | null>(null);
+
+    useEffect(() => {
+        setAiEndpoint(aiProvider.endpoint);
+        setAiModelId(aiProvider.modelId);
+        setAiApiKey(aiProvider.apiKey);
+    }, [userManager.settings.settings?.aiProvider]);
+
+    useEffect(() => {
+        if (authManager.userMetadata?.isAdmin) {
+            refreshAccounts();
+        }
+    }, [authManager.userMetadata?.isAdmin]);
+
+    async function refreshAccounts() {
+        const result = (await invokeMainChannel(
+            MainChannels.LOCAL_LIST_ACCOUNTS,
+        )) as LocalAccount[];
+        setAccounts(result || []);
+    }
 
     function updateIde(ide: IDE) {
         userManager.settings.updateEditor({ ideType: ide.type });
@@ -36,6 +76,63 @@ const PreferencesTab = observer(() => {
 
     function updateDeleteWarning(enabled: boolean) {
         userManager.settings.updateEditor({ shouldWarnDelete: enabled });
+    }
+
+    async function saveAiProvider() {
+        const settings: AIProviderSettings = {
+            endpoint: aiEndpoint,
+            modelId: aiModelId,
+            apiKey: aiApiKey,
+        };
+        await userManager.settings.update({ aiProvider: settings });
+    }
+
+    async function createAccount() {
+        setAccountMessage(null);
+        const result = (await invokeMainChannel(MainChannels.LOCAL_CREATE_ACCOUNT, {
+            email: newEmail,
+            password: newPassword,
+            isAdmin: newIsAdmin,
+        })) as { success: boolean; error?: string };
+
+        if (result.success) {
+            setAccountMessage('Account created');
+            setNewEmail('');
+            setNewPassword('');
+            setNewIsAdmin(false);
+            await refreshAccounts();
+        } else {
+            setAccountMessage(result.error || 'Failed to create account');
+        }
+    }
+
+    async function updatePassword() {
+        setAccountMessage(null);
+        const result = (await invokeMainChannel(MainChannels.LOCAL_CHANGE_PASSWORD, {
+            email: changePasswordEmail || authManager.userMetadata?.email,
+            newPassword: changePasswordValue,
+        })) as { success: boolean; error?: string };
+
+        if (result.success) {
+            setAccountMessage('Password updated');
+            setChangePasswordValue('');
+        } else {
+            setAccountMessage(result.error || 'Failed to update password');
+        }
+    }
+
+    async function removeAccount(email: string) {
+        setAccountMessage(null);
+        const result = (await invokeMainChannel(MainChannels.LOCAL_DELETE_ACCOUNT, {
+            email,
+        })) as { success: boolean; error?: string };
+
+        if (result.success) {
+            setAccountMessage('Account deleted');
+            await refreshAccounts();
+        } else {
+            setAccountMessage(result.error || 'Failed to delete account');
+        }
     }
 
     return (
@@ -190,6 +287,116 @@ const PreferencesTab = observer(() => {
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
+            </div>
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                    <p className="text-largePlus">AI Provider</p>
+                    <p className="text-foreground-onlook text-small">
+                        Configure your OpenAI-compatible local LLM endpoint.
+                    </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Input
+                        placeholder="Endpoint (e.g. http://localhost:8000/v1)"
+                        value={aiEndpoint}
+                        onChange={(e) => setAiEndpoint(e.target.value)}
+                    />
+                    <Input
+                        placeholder="Model ID"
+                        value={aiModelId}
+                        onChange={(e) => setAiModelId(e.target.value)}
+                    />
+                    <Input
+                        type="password"
+                        placeholder="API Key (optional)"
+                        value={aiApiKey}
+                        onChange={(e) => setAiApiKey(e.target.value)}
+                    />
+                    <Button onClick={saveAiProvider} className="self-start">
+                        Save AI Provider
+                    </Button>
+                </div>
+            </div>
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                    <p className="text-largePlus">Account Management</p>
+                    <p className="text-foreground-onlook text-small">
+                        {authManager.userMetadata?.isAdmin
+                            ? 'Create and manage local accounts.'
+                            : 'Change your password.'}
+                    </p>
+                </div>
+                {accountMessage && <p className="text-small text-blue-500">{accountMessage}</p>}
+                {authManager.userMetadata?.isAdmin && (
+                    <div className="flex flex-col gap-2">
+                        <p className="text-smallPlus">Create Account</p>
+                        <Input
+                            placeholder="Email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                        />
+                        <Input
+                            type="password"
+                            placeholder="Password (min 8 characters)"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                        />
+                        <label className="flex items-center gap-2 text-small">
+                            <input
+                                type="checkbox"
+                                checked={newIsAdmin}
+                                onChange={(e) => setNewIsAdmin(e.target.checked)}
+                            />
+                            Admin
+                        </label>
+                        <Button onClick={createAccount} className="self-start">
+                            Create Account
+                        </Button>
+                    </div>
+                )}
+                {authManager.userMetadata?.isAdmin && accounts.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                        <p className="text-smallPlus">Accounts</p>
+                        {accounts.map((account) => (
+                            <div
+                                key={account.email}
+                                className="flex justify-between items-center text-small"
+                            >
+                                <span>
+                                    {account.email} {account.isAdmin ? '(Admin)' : ''}
+                                </span>
+                                {!account.isAdmin && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeAccount(account.email)}
+                                    >
+                                        Delete
+                                    </Button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <div className="flex flex-col gap-2">
+                    <p className="text-smallPlus">Change Password</p>
+                    {authManager.userMetadata?.isAdmin && (
+                        <Input
+                            placeholder="Account email (leave blank for current user)"
+                            value={changePasswordEmail}
+                            onChange={(e) => setChangePasswordEmail(e.target.value)}
+                        />
+                    )}
+                    <Input
+                        type="password"
+                        placeholder="New password (min 8 characters)"
+                        value={changePasswordValue}
+                        onChange={(e) => setChangePasswordValue(e.target.value)}
+                    />
+                    <Button onClick={updatePassword} className="self-start">
+                        Update Password
+                    </Button>
+                </div>
             </div>
         </div>
     );
