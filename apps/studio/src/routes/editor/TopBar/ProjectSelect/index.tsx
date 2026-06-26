@@ -166,13 +166,6 @@ const ProjectBreadcrumb = observer(() => {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                         onClick={() => {
-                            editorEngine.isPlansOpen = true;
-                        }}
-                    >
-                        {t('projects.actions.subscriptions')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                        onClick={() => {
                             editorEngine.isSettingsOpen = true;
                             editorEngine.settingsTab = SettingsTabValue.PROJECT;
                         }}
