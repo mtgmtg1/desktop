@@ -37,7 +37,6 @@ import { ThemeManager } from './theme';
 import { WebviewManager } from './webview';
 
 export class EditorEngine {
-    private _plansOpen: boolean = false;
     private _settingsOpen: boolean = false;
     private _hotkeysOpen: boolean = false;
     private _publishOpen: boolean = false;
@@ -160,9 +159,6 @@ export class EditorEngine {
     get layersPanelTab() {
         return this._layersPanelTab;
     }
-    get isPlansOpen() {
-        return this._plansOpen;
-    }
     get isSettingsOpen() {
         return this._settingsOpen;
     }
@@ -213,13 +209,6 @@ export class EditorEngine {
         this._layersPanelTab = tab;
     }
 
-    set isPlansOpen(open: boolean) {
-        this._plansOpen = open;
-        if (open) {
-            sendAnalytics('open pro checkout');
-        }
-    }
-
     set isSettingsOpen(open: boolean) {
         this._settingsOpen = open;
     }
@@ -264,7 +253,6 @@ export class EditorEngine {
         this.themeManager?.dispose();
         this.fontManager?.dispose();
         this._settingsOpen = false;
-        this._plansOpen = false;
     }
 
     clearUI() {
