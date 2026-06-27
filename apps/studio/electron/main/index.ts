@@ -75,6 +75,7 @@ const initMainWindow = () => {
         }
         return { action: 'deny' };
     });
+    updater.listen();
 };
 
 const setupAppEventListeners = () => {
@@ -83,7 +84,7 @@ const setupAppEventListeners = () => {
     });
 
     app.on('ready', () => {
-        updater.listen();
+        // updater.listen() is now called after mainWindow is created in initMainWindow()
     });
 
     app.on('window-all-closed', async () => {
@@ -94,7 +95,7 @@ const setupAppEventListeners = () => {
     });
 
     app.on('second-instance', () => {
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) {
                 mainWindow.restore();
             }
@@ -103,9 +104,12 @@ const setupAppEventListeners = () => {
     });
 
     app.on('activate', () => {
-        BrowserWindow.getAllWindows().length
-            ? BrowserWindow.getAllWindows()[0].focus()
-            : initMainWindow();
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length && !windows[0].isDestroyed()) {
+            windows[0].focus();
+        } else {
+            initMainWindow();
+        }
     });
 
     async function cleanUp() {
@@ -117,7 +121,9 @@ const setupAppEventListeners = () => {
         try {
             await Promise.race([
                 Promise.all([
-                    mainWindow?.webContents.send(MainChannels.CLEAN_UP_BEFORE_QUIT),
+                    mainWindow && !mainWindow.isDestroyed()
+                        ? mainWindow.webContents.send(MainChannels.CLEAN_UP_BEFORE_QUIT)
+                        : Promise.resolve(),
                     runManager?.stopAll(),
                 ]),
                 timeoutPromise,

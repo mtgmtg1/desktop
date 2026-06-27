@@ -5,6 +5,14 @@ import { MainChannels } from '@onlook/models/constants';
 import log from 'electron-log';
 import { mainWindow } from '..';
 
+// [Flow: Check mainWindow exists -> Check not destroyed -> Send IPC message]
+function sendToMainWindow(channel: MainChannels, ...args: any[]) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+    }
+    mainWindow.webContents.send(channel, ...args);
+}
+
 class AppUpdater {
     static instance: AppUpdater | null = null;
 
@@ -46,7 +54,7 @@ class AppUpdater {
 
         autoUpdater.on('update-not-available', () => {
             log.info('Update not available');
-            mainWindow?.webContents.send(MainChannels.UPDATE_NOT_AVAILABLE);
+            sendToMainWindow(MainChannels.UPDATE_NOT_AVAILABLE);
         });
 
         autoUpdater.on('download-progress', (progress) => {
@@ -58,7 +66,7 @@ class AppUpdater {
 
         autoUpdater.on('update-downloaded', () => {
             log.info('Update downloaded');
-            mainWindow?.webContents.send(MainChannels.UPDATE_DOWNLOADED);
+            sendToMainWindow(MainChannels.UPDATE_DOWNLOADED);
         });
 
         autoUpdater.on('error', (err) => {
